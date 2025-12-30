@@ -886,6 +886,117 @@ NO text, NO watermarks, NO human faces."""
     return prompt
 
 
+def parse_outline_to_json(text):
+    """
+    将纯文本大纲转换为JSON结构
+    支持格式：
+    # 标题        -> cover slide
+    ## 章节       -> section slide
+    ### 内容标题  -> content_image slide
+    - 要点1      -> bullets
+    - 要点2
+    > 金句       -> quote
+    """
+    lines = text.strip().split('\n')
+    
+    slides = []
+    current_slide = None
+    cover_title = "演示文稿"
+    cover_subtitle = ""
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # 封面标题 (# 开头)
+        if line.startswith('# ') and not line.startswith('## '):
+            cover_title = line[2:].strip()
+            continue
+        
+        # 章节标题 (## 开头)
+        if line.startswith('## ') and not line.startswith('### '):
+            # 保存上一个slide
+            if current_slide:
+                slides.append(current_slide)
+            
+            # 创建章节slide
+            current_slide = {
+                'type': 'section',
+                'title': line[3:].strip()
+            }
+            continue
+        
+        # 内容标题 (### 开头)
+        if line.startswith('### '):
+            # 保存上一个slide
+            if current_slide:
+                slides.append(current_slide)
+            
+            # 创建内容slide
+            current_slide = {
+                'type': 'content_image',
+                'title': line[4:].strip(),
+                'bullets': [],
+                'layout': 'left_text_right_image'
+            }
+            continue
+        
+        # 要点 (- 或 * 或 数字. 开头)
+        if line.startswith('- ') or line.startswith('* ') or (len(line) > 2 and line[0].isdigit() and line[1] == '.'):
+            if current_slide and 'bullets' in current_slide:
+                bullet_text = line[2:].strip() if line[0] in '-*' else line[line.index('.')+1:].strip()
+                current_slide['bullets'].append(bullet_text)
+            continue
+        
+        # 金句 (> 开头)
+        if line.startswith('> '):
+            if current_slide:
+                current_slide['quote'] = line[2:].strip()
+            continue
+        
+        # 普通文本作为副标题或要点
+        if current_slide is None:
+            # 还没有slide，作为副标题
+            cover_subtitle = line
+        elif 'bullets' in current_slide:
+            # 有当前slide，作为要点
+            current_slide['bullets'].append(line)
+    
+    # 保存最后一个slide
+    if current_slide:
+        slides.append(current_slide)
+    
+    # 添加封面
+    cover_slide = {
+        'type': 'cover',
+        'title': cover_title,
+        'subtitle': cover_subtitle or '自动生成',
+        'slogan': ''
+    }
+    
+    # 添加结尾
+    ending_slide = {
+        'type': 'ending',
+        'title': '谢谢观看',
+        'bullets': ['欢迎交流讨论'],
+        'quote': '创新驱动发展'
+    }
+    
+    # 组装完整JSON
+    result = {
+        'metadata': {
+            'title': cover_title,
+            'theme': 'military_solemn',
+            'version': '3.8',
+            'total_slides': len(slides) + 2
+        },
+        'slides': [cover_slide] + slides + [ending_slide]
+    }
+    
+    return result
+
+
 def extract_image_prompts_from_json(json_data):
     """从JSON中提取所有图片提示词和路径"""
     image_tasks = []
@@ -1050,23 +1161,66 @@ def main():
     print("  ✅ 金句智能避让")
     print()
     
-    # ===== 步骤1：选择JSON文件 =====
+    # ===== 步骤1：选择输入方式 =====
     print("=" * 70)
-    print("📄 步骤1：选择JSON配置文件")
+    print("📄 步骤1：输入PPT大纲")
     print("=" * 70)
     
     choice = input(
-        "\n请选择:\n"
-        "[1] 使用内置示例（军事主题）\n"
-        "[2] 指定JSON文件路径\n"
-        "> "
-    )
+        "\n请选择输入方式:\n"
+        "[1] 粘贴大纲文本（推荐 - 最快）\n"
+        "[2] 使用内置示例（军事主题）\n"
+        "[3] 导入JSON文件\n"
+        "默认: 1 > "
+    ).strip() or "1"
     
     json_data = None
     json_path = None
     
     if choice == "1":
-        # 创建内置示例（简化版，不含图片）
+        # 粘贴文本模式
+        print("\n" + "-" * 50)
+        print("📝 请粘贴大纲文本（支持多行），输入完成后按两次回车结束：")
+        print("-" * 50)
+        
+        lines = []
+        empty_count = 0
+        while True:
+            try:
+                line = input()
+                if line == "":
+                    empty_count += 1
+                    if empty_count >= 2:
+                        break
+                    lines.append(line)
+                else:
+                    empty_count = 0
+                    lines.append(line)
+            except EOFError:
+                break
+        
+        text_content = "\n".join(lines).strip()
+        
+        if not text_content:
+            print("❌ 未输入任何内容")
+            return
+        
+        # 尝试解析为JSON
+        try:
+            json_data = json.loads(text_content)
+            print(f"\n✅ JSON格式解析成功")
+        except json.JSONDecodeError:
+            # 不是JSON，尝试解析为大纲文本
+            print(f"\n📝 检测到纯文本大纲，正在转换...")
+            json_data = parse_outline_to_json(text_content)
+            if json_data:
+                print(f"✅ 大纲转换成功，共 {len(json_data.get('slides', []))} 页幻灯片")
+            else:
+                print("❌ 大纲解析失败")
+                return
+    
+    elif choice == "2":
+        # 内置示例
         json_path = "example_simple.json"
         json_data = {
             "metadata": {"title": "示例演示", "theme": "military_solemn", "version": "3.8", "total_slides": 3},
@@ -1081,13 +1235,13 @@ def main():
         
         print(f"\n✅ 使用内置示例: {json_path}")
     
-    else:
+    elif choice == "3":
+        # JSON文件导入
         json_path = input("\n请输入JSON文件路径: ").strip()
         if not os.path.exists(json_path):
             print(f"❌ 文件不存在: {json_path}")
             return
         
-        # 读取JSON
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
@@ -1095,6 +1249,10 @@ def main():
         except Exception as e:
             print(f"❌ JSON解析失败: {e}")
             return
+    
+    else:
+        print("❌ 无效选择")
+        return
     
     # ===== 步骤2：提取图片任务 =====
     image_tasks = extract_image_prompts_from_json(json_data)
