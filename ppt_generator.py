@@ -21,6 +21,14 @@ import requests
 import time
 from datetime import datetime
 
+# GUI支持
+try:
+    import tkinter as tk
+    from tkinter import scrolledtext, messagebox
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
+
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -886,112 +894,271 @@ NO text, NO watermarks, NO human faces."""
     return prompt
 
 
+def get_text_from_gui():
+    """
+    弹出GUI窗口让用户输入/粘贴大纲文本
+    返回用户输入的文本，如果取消则返回None
+    """
+    if not HAS_TKINTER:
+        print("⚠️  未安装tkinter，使用终端输入模式")
+        return None
+    
+    result = {'text': None}
+    
+    def on_submit():
+        result['text'] = text_area.get('1.0', tk.END).strip()
+        if result['text']:
+            root.destroy()
+        else:
+            messagebox.showwarning("提示", "请输入大纲内容")
+    
+    def on_cancel():
+        result['text'] = None
+        root.destroy()
+    
+    # 创建窗口 - 更大尺寸
+    root = tk.Tk()
+    root.title("📝 PPT大纲输入 - 粘贴您的大纲文本")
+    root.geometry("1000x750")
+    root.configure(bg='#2b2b2b')
+    
+    # 说明标签 - 更大字体
+    label = tk.Label(root, 
+                     text="📋 请粘贴大纲文本（支持多种格式，会自动智能解析）",
+                     font=('Microsoft YaHei', 14, 'bold'), bg='#2b2b2b', fg='#ffffff')
+    label.pack(pady=15)
+    
+    # 格式提示
+    hint = tk.Label(root, 
+                    text="支持格式：# 标题 | ## 章节/第X页 | ### 内容 | - 要点 | > 金句",
+                    font=('Microsoft YaHei', 11), bg='#2b2b2b', fg='#aaaaaa')
+    hint.pack(pady=5)
+    
+    # 文本输入区 - 更大字体
+    text_area = scrolledtext.ScrolledText(root, width=100, height=30, 
+                                          font=('Consolas', 13),
+                                          wrap=tk.WORD, bg='#1e1e1e', fg='#d4d4d4',
+                                          insertbackground='white')
+    text_area.pack(padx=30, pady=10, fill=tk.BOTH, expand=True)
+    
+    # 按钮框架
+    btn_frame = tk.Frame(root, bg='#2b2b2b')
+    btn_frame.pack(pady=20)
+    
+    submit_btn = tk.Button(btn_frame, text="✅ 确认生成PPT", command=on_submit,
+                          font=('Microsoft YaHei', 14, 'bold'), bg='#4CAF50', fg='white',
+                          width=18, height=2, cursor='hand2', relief='flat')
+    submit_btn.pack(side=tk.LEFT, padx=30)
+    
+    cancel_btn = tk.Button(btn_frame, text="❌ 取消", command=on_cancel,
+                          font=('Microsoft YaHei', 14), bg='#f44336', fg='white',
+                          width=12, height=2, cursor='hand2', relief='flat')
+    cancel_btn.pack(side=tk.LEFT, padx=30)
+    
+    # 居中显示
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() - root.winfo_width()) // 2
+    y = (root.winfo_screenheight() - root.winfo_height()) // 2
+    root.geometry(f"+{x}+{y}")
+    
+    # 让文本框获得焦点
+    text_area.focus_set()
+    
+    root.mainloop()
+    
+    return result['text']
+
+
 def parse_outline_to_json(text):
     """
-    将纯文本大纲转换为JSON结构
-    支持格式：
-    # 标题        -> cover slide
-    ## 章节       -> section slide
-    ### 内容标题  -> content_image slide
-    - 要点1      -> bullets
-    - 要点2
-    > 金句       -> quote
+    智能解析大纲文本转换为JSON结构
+    支持多种格式：
+    # 标题 / # XXX大纲         -> 提取标题
+    ## 第X页：标题 / ## 章节名  -> section 或 content_image
+    ### 内容标题              -> content_image
+    - **标题**：内容 / - 内容  -> bullets
+    > 金句                    -> quote
+    ---                       -> 分隔符（忽略）
     """
+    import re
+    
     lines = text.strip().split('\n')
     
     slides = []
     current_slide = None
     cover_title = "演示文稿"
     cover_subtitle = ""
+    layout_index = 0
+    layouts = ['left_text_right_image', 'right_text_left_image']
+    
+    def clean_text(s):
+        """清理Markdown格式"""
+        s = s.replace('**', '').replace('*', '')
+        s = re.sub(r'\[.*?\]', '', s)  # 移除[内容]
+        s = s.replace('"', '').replace('"', '').replace('"', '')
+        return s.strip()
+    
+    def extract_title_from_section(line):
+        """从 '## 第X页：标题' 或 '## 标题' 提取标题"""
+        line = line.lstrip('#').strip()
+        # 匹配 "第X页：标题" 或 "第X页:标题"
+        match = re.match(r'第.+[页节][\s：:]+(.+)', line)
+        if match:
+            return clean_text(match.group(1))
+        # 匹配 "封面" "总结" 等特殊页
+        if '封面' in line or '结语' in line or '结尾' in line:
+            return None  # 封面/结尾特殊处理
+        return clean_text(line)
+    
+    def is_section_only(title):
+        """判断是否只是章节页（没有具体内容的）"""
+        keywords = ['目录', '章节', '第一部分', '第二部分', '第三部分', '第四部分', '概述', '引言']
+        return any(kw in title for kw in keywords)
     
     for line in lines:
+        original_line = line
         line = line.strip()
-        if not line:
+        
+        # 跳过空行和分隔符
+        if not line or line == '---' or line.startswith('---'):
             continue
         
-        # 封面标题 (# 开头)
+        # 主标题 (# 开头，但不是##)
         if line.startswith('# ') and not line.startswith('## '):
-            cover_title = line[2:].strip()
+            title = line[2:].strip()
+            # 处理 "# XXX大纲" 格式
+            title = re.sub(r'大纲$', '', title).strip()
+            title = clean_text(title)
+            if title:
+                cover_title = title
             continue
         
-        # 章节标题 (## 开头)
+        # 二级标题 (## 开头)
         if line.startswith('## ') and not line.startswith('### '):
             # 保存上一个slide
             if current_slide:
                 slides.append(current_slide)
             
-            # 创建章节slide
-            current_slide = {
-                'type': 'section',
-                'title': line[3:].strip()
-            }
-            continue
-        
-        # 内容标题 (### 开头)
-        if line.startswith('### '):
-            # 保存上一个slide
-            if current_slide:
-                slides.append(current_slide)
+            section_title = extract_title_from_section(line)
             
-            # 创建内容slide
+            # 检查是否是封面
+            if section_title is None or '封面' in line:
+                current_slide = {'type': '_cover_placeholder'}
+                continue
+            
+            # 检查是否是总结/结尾
+            if '总结' in section_title or '结语' in section_title or '结尾' in section_title:
+                current_slide = {
+                    'type': 'ending',
+                    'title': section_title,
+                    'bullets': [],
+                    'quote': ''
+                }
+                continue
+            
+            # 普通内容页（带图片）
             current_slide = {
                 'type': 'content_image',
-                'title': line[4:].strip(),
+                'title': section_title,
                 'bullets': [],
-                'layout': 'left_text_right_image'
+                'layout': layouts[layout_index % 2],
+                'image_desc': f'{section_title}示意图',
+                'image': f'images/slide_{layout_index + 1}.png'
             }
+            layout_index += 1
             continue
         
-        # 要点 (- 或 * 或 数字. 开头)
-        if line.startswith('- ') or line.startswith('* ') or (len(line) > 2 and line[0].isdigit() and line[1] == '.'):
-            if current_slide and 'bullets' in current_slide:
-                bullet_text = line[2:].strip() if line[0] in '-*' else line[line.index('.')+1:].strip()
-                current_slide['bullets'].append(bullet_text)
+        # 三级标题 (### 开头)
+        if line.startswith('### '):
+            # 保存上一个slide
+            if current_slide and current_slide.get('type') != '_cover_placeholder':
+                slides.append(current_slide)
+            
+            title = clean_text(line[4:])
+            current_slide = {
+                'type': 'content_image',
+                'title': title,
+                'bullets': [],
+                'layout': layouts[layout_index % 2],
+                'image_desc': f'{title}示意图',
+                'image': f'images/slide_{layout_index + 1}.png'
+            }
+            layout_index += 1
+            continue
+        
+        # 要点 (- 或 * 开头，支持缩进)
+        if re.match(r'^[\s]*[-*]\s+', original_line):
+            bullet_text = re.sub(r'^[\s]*[-*]\s+', '', original_line)
+            bullet_text = clean_text(bullet_text)
+            
+            if current_slide:
+                if current_slide.get('type') == '_cover_placeholder':
+                    # 封面的要点提取为副标题/演讲人等
+                    if '标题' in bullet_text and '：' in bullet_text:
+                        cover_title = bullet_text.split('：', 1)[1].strip()
+                    elif '副标题' in bullet_text and '：' in bullet_text:
+                        cover_subtitle = bullet_text.split('：', 1)[1].strip()
+                elif 'bullets' in current_slide and bullet_text:
+                    current_slide['bullets'].append(bullet_text)
             continue
         
         # 金句 (> 开头)
         if line.startswith('> '):
-            if current_slide:
-                current_slide['quote'] = line[2:].strip()
+            if current_slide and current_slide.get('type') not in [None, '_cover_placeholder']:
+                current_slide['quote'] = clean_text(line[2:])
             continue
         
-        # 普通文本作为副标题或要点
+        # 理解类比等特殊段落
+        if line.startswith('**') and '**' in line[2:]:
+            # 可能是 **理解类比**：内容
+            continue
+        
+        # 其他文本
         if current_slide is None:
-            # 还没有slide，作为副标题
-            cover_subtitle = line
+            if not cover_subtitle:
+                cover_subtitle = clean_text(line)
         elif 'bullets' in current_slide:
-            # 有当前slide，作为要点
-            current_slide['bullets'].append(line)
+            cleaned = clean_text(line)
+            if cleaned and not cleaned.startswith('**'):
+                current_slide['bullets'].append(cleaned)
     
     # 保存最后一个slide
-    if current_slide:
+    if current_slide and current_slide.get('type') not in [None, '_cover_placeholder']:
         slides.append(current_slide)
+    
+    # 过滤掉占位符
+    slides = [s for s in slides if s.get('type') != '_cover_placeholder']
     
     # 添加封面
     cover_slide = {
         'type': 'cover',
         'title': cover_title,
-        'subtitle': cover_subtitle or '自动生成',
+        'subtitle': cover_subtitle or '专业培训课程',
         'slogan': ''
     }
     
-    # 添加结尾
-    ending_slide = {
-        'type': 'ending',
-        'title': '谢谢观看',
-        'bullets': ['欢迎交流讨论'],
-        'quote': '创新驱动发展'
-    }
+    # 检查是否已有ending
+    has_ending = any(s.get('type') == 'ending' for s in slides)
+    
+    # 如果没有ending，添加一个
+    if not has_ending:
+        ending_slide = {
+            'type': 'ending',
+            'title': '谢谢观看',
+            'bullets': ['欢迎交流讨论'],
+            'quote': '合规运作，价值创造'
+        }
+        slides.append(ending_slide)
     
     # 组装完整JSON
     result = {
         'metadata': {
             'title': cover_title,
-            'theme': 'military_solemn',
-            'version': '3.8',
-            'total_slides': len(slides) + 2
+            'theme': 'business_gray',
+            'version': '3.9',
+            'total_slides': len(slides) + 1
         },
-        'slides': [cover_slide] + slides + [ending_slide]
+        'slides': [cover_slide] + slides
     }
     
     return result
@@ -1145,20 +1312,20 @@ def download_images_from_json(image_tasks, unsplash_key=None, siliconflow_key=No
 
 
 # ========================================================================
-# 主函数 v3.8
+# 主函数 v3.9
 # ========================================================================
 
 def main():
-    """主函数 v3.8 - 重新设计的流程"""
+    """主函数 v3.9 - 支持GUI输入"""
     print("=" * 70)
-    print("PPT自动生成器 v3.8 - 完美版")
+    print("PPT自动生成器 v3.9 - 完美版")
     print("=" * 70)
     print()
-    print("📌 v3.8 新特性：")
-    print("  ✅ 先读JSON再下载图片（使用JSON中的提示词）")
+    print("📌 v3.9 新特性：")
+    print("  ✅ 粘贴大纲文本自动支持AI图片生成")
+    print("  ✅ GUI弹窗输入（更方便粘贴）")
     print("  ✅ 4种主题配色支持")
     print("  ✅ 图片路径智能同步")
-    print("  ✅ 金句智能避让")
     print()
     
     # ===== 步骤1：选择输入方式 =====
@@ -1168,9 +1335,10 @@ def main():
     
     choice = input(
         "\n请选择输入方式:\n"
-        "[1] 粘贴大纲文本（推荐 - 最快）\n"
-        "[2] 使用内置示例（军事主题）\n"
-        "[3] 导入JSON文件\n"
+        "[1] 弹窗粘贴大纲（推荐 - 最方便）\n"
+        "[2] 终端粘贴大纲\n"
+        "[3] 使用内置示例（军事主题）\n"
+        "[4] 导入JSON文件\n"
         "默认: 1 > "
     ).strip() or "1"
     
@@ -1178,7 +1346,33 @@ def main():
     json_path = None
     
     if choice == "1":
-        # 粘贴文本模式
+        # GUI弹窗输入模式
+        print("\n📝 正在打开输入窗口...")
+        text_content = get_text_from_gui()
+        
+        if not text_content:
+            print("❌ 已取消或未输入内容")
+            return
+        
+        # 尝试解析为JSON
+        try:
+            json_data = json.loads(text_content)
+            print(f"\n✅ JSON格式解析成功")
+        except json.JSONDecodeError:
+            # 不是JSON，尝试解析为大纲文本
+            print(f"\n📝 检测到纯文本大纲，正在转换...")
+            json_data = parse_outline_to_json(text_content)
+            if json_data:
+                # 统计content_image数量
+                image_count = sum(1 for s in json_data.get('slides', []) if s.get('type') == 'content_image')
+                print(f"✅ 大纲转换成功，共 {len(json_data.get('slides', []))} 页幻灯片")
+                print(f"   📸 其中 {image_count} 页支持AI图片生成")
+            else:
+                print("❌ 大纲解析失败")
+                return
+    
+    elif choice == "2":
+        # 终端粘贴文本模式
         print("\n" + "-" * 50)
         print("📝 请粘贴大纲文本（支持多行），输入完成后按两次回车结束：")
         print("-" * 50)
@@ -1214,19 +1408,22 @@ def main():
             print(f"\n📝 检测到纯文本大纲，正在转换...")
             json_data = parse_outline_to_json(text_content)
             if json_data:
+                image_count = sum(1 for s in json_data.get('slides', []) if s.get('type') == 'content_image')
                 print(f"✅ 大纲转换成功，共 {len(json_data.get('slides', []))} 页幻灯片")
+                print(f"   📸 其中 {image_count} 页支持AI图片生成")
             else:
                 print("❌ 大纲解析失败")
                 return
     
-    elif choice == "2":
+    elif choice == "3":
         # 内置示例
         json_path = "example_simple.json"
         json_data = {
-            "metadata": {"title": "示例演示", "theme": "military_solemn", "version": "3.8", "total_slides": 3},
+            "metadata": {"title": "示例演示", "theme": "military_solemn", "version": "3.9", "total_slides": 3},
             "slides": [
-                {"type": "cover", "title": "PPT生成器v3.8测试", "subtitle": "完美版演示", "slogan": "先读JSON，再下载图片"},
+                {"type": "cover", "title": "PPT生成器v3.9测试", "subtitle": "完美版演示", "slogan": "GUI弹窗输入"},
                 {"type": "section", "title": "核心改进"},
+                {"type": "content_image", "title": "新功能展示", "bullets": ["GUI弹窗输入", "自动支持AI图片"], "layout": "left_text_right_image", "image_desc": "新功能展示"},
                 {"type": "ending", "title": "测试完成", "bullets": ["流程优化", "多主题支持", "智能避让"], "quote": "完美！"}
             ]
         }
@@ -1235,7 +1432,7 @@ def main():
         
         print(f"\n✅ 使用内置示例: {json_path}")
     
-    elif choice == "3":
+    elif choice == "4":
         # JSON文件导入
         json_path = input("\n请输入JSON文件路径: ").strip()
         if not os.path.exists(json_path):
