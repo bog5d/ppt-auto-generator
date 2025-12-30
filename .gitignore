@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Generated files
+*.pptx
+*.jpg
+*.jpeg
+*.png
+!example_*.jpg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# API keys (never commit!)
+.env
+secrets.txt
+*_key.txt

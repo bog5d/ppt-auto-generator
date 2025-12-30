@@ -1,0 +1,60 @@
+{
+  "metadata": {
+    "title": "电磁攻防与电子系统防护体系",
+    "theme": "military_solemn",
+    "version": "1.0",
+    "author": "AI资源指挥官"
+  },
+  "slides": [
+    {
+      "type": "cover",
+      "title": "电磁攻防与电子系统防护体系",
+      "subtitle": "现状、挑战与对策",
+      "slogan": "在未来战场，谁失去了电磁主导权，谁就失去了生存权"
+    },
+    {
+      "type": "section",
+      "title": "第一部分：行业概述"
+    },
+    {
+      "type": "content_image",
+      "title": "行业定义与坐标",
+      "bullets": [
+        "行业属性：跨学科领域，融合电子工程、应用物理、材料科学与国防军事科学",
+        "研究核心：极高强度电磁能量（强脉冲/微波）的产生、传输、耦合、损伤机制与防护对策",
+        "应用领域：国防军工（导弹、战机、无人平台）、国家关键基础设施（电网、通信、交通）"
+      ],
+      "image_prompt": "Advanced electromagnetic defense system diagram, showing layered protection around military and civilian infrastructure, technical blueprint style, blue and white color scheme, high quality 4k",
+      "image_desc": "电磁攻防技术体系示意图",
+      "quote": "电磁频谱是现代战争的'第五维战场'"
+    },
+    {
+      "type": "section",
+      "title": "第二部分：威胁源与耦合机制"
+    },
+    {
+      "type": "content_image",
+      "title": "威胁源分类与参数特征",
+      "bullets": [
+        "核电磁脉冲(NEMP)：覆盖范围广，场强可达50kV/m",
+        "高功率微波(HPM)：定向能武器，功率可达GW级",
+        "超宽带脉冲(UWB)：纳秒级脉冲，频谱覆盖宽",
+        "雷电电磁脉冲(LEMP)：自然威胁，峰值电流可达200kA"
+      ],
+      "image_prompt": "Scientific visualization of electromagnetic pulse waveforms and spectrum analysis, oscilloscope display showing EMP characteristics, technical diagram style, dark background with glowing waveforms",
+      "image_desc": "电磁脉冲波形与频谱特征",
+      "quote": "了解威胁，才能有效防护"
+    },
+    {
+      "type": "ending",
+      "title": "总结与展望",
+      "bullets": [
+        "电磁防护是国家安全的重要组成部分",
+        "需要持续投入研发新型防护技术",
+        "建立完善的标准体系和试验能力",
+        "培养专业人才队伍"
+      ],
+      "quote": "构建电磁安全防线，守护国家核心利益"
+    }
+  ]
+}
