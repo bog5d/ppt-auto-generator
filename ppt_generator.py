@@ -934,26 +934,37 @@ def get_text_from_gui():
                     font=('Microsoft YaHei', 11), bg='#2b2b2b', fg='#aaaaaa')
     hint.pack(pady=5)
     
+    # 按钮框架 - 先pack按钮，固定在底部
+    btn_frame = tk.Frame(root, bg='#2b2b2b')
+    btn_frame.pack(side=tk.BOTTOM, pady=20, fill=tk.X)
+    
+    submit_btn = tk.Button(btn_frame, text="✅ 确认生成PPT", command=on_submit,
+                          font=('Microsoft YaHei', 16, 'bold'), bg='#4CAF50', fg='white',
+                          width=20, height=2, cursor='hand2', relief='raised', bd=3)
+    submit_btn.pack(side=tk.LEFT, padx=50, expand=True)
+    
+    cancel_btn = tk.Button(btn_frame, text="❌ 取消", command=on_cancel,
+                          font=('Microsoft YaHei', 16), bg='#f44336', fg='white',
+                          width=14, height=2, cursor='hand2', relief='raised', bd=3)
+    cancel_btn.pack(side=tk.LEFT, padx=50, expand=True)
+    
+    # 快捷键提示
+    shortcut_label = tk.Label(btn_frame, text="💡 快捷键: Ctrl+Enter 确认",
+                              font=('Microsoft YaHei', 10), bg='#2b2b2b', fg='#888888')
+    shortcut_label.pack(side=tk.RIGHT, padx=20)
+    
     # 文本输入区 - 更大字体
-    text_area = scrolledtext.ScrolledText(root, width=100, height=30, 
+    text_area = scrolledtext.ScrolledText(root, width=100, height=25, 
                                           font=('Consolas', 13),
                                           wrap=tk.WORD, bg='#1e1e1e', fg='#d4d4d4',
                                           insertbackground='white')
     text_area.pack(padx=30, pady=10, fill=tk.BOTH, expand=True)
     
-    # 按钮框架
-    btn_frame = tk.Frame(root, bg='#2b2b2b')
-    btn_frame.pack(pady=20)
-    
-    submit_btn = tk.Button(btn_frame, text="✅ 确认生成PPT", command=on_submit,
-                          font=('Microsoft YaHei', 14, 'bold'), bg='#4CAF50', fg='white',
-                          width=18, height=2, cursor='hand2', relief='flat')
-    submit_btn.pack(side=tk.LEFT, padx=30)
-    
-    cancel_btn = tk.Button(btn_frame, text="❌ 取消", command=on_cancel,
-                          font=('Microsoft YaHei', 14), bg='#f44336', fg='white',
-                          width=12, height=2, cursor='hand2', relief='flat')
-    cancel_btn.pack(side=tk.LEFT, padx=30)
+    # 绑定 Ctrl+Enter 快捷键
+    def on_ctrl_enter(event):
+        on_submit()
+        return 'break'
+    text_area.bind('<Control-Return>', on_ctrl_enter)
     
     # 居中显示
     root.update_idletasks()
