@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PPT自动生成器 v3.8 - 完美版
+PPT自动生成器 v4.0 - 模板版
 核心改进：
 1. 先读JSON再下载图片（使用JSON中的提示词）
 2. 多主题支持（4种预设+自定义）
@@ -8,10 +8,12 @@ PPT自动生成器 v3.8 - 完美版
 4. 金句智能避让
 5. 完整提示词显示
 6. 自动生成AI提示词（基于image_desc）
+7. 【新】支持企业模板导入（提取样式自动生成）
+8. 【新】模板样式分析报告
 
 作者：AI资源指挥官
-版本：3.8
-更新：2025-12-30
+版本：4.0
+更新：2025-12-31
 """
 
 import json
@@ -24,10 +26,24 @@ from datetime import datetime
 # GUI支持
 try:
     import tkinter as tk
-    from tkinter import scrolledtext, messagebox
+    from tkinter import scrolledtext, messagebox, filedialog
     HAS_TKINTER = True
 except ImportError:
     HAS_TKINTER = False
+
+# 模板解析模块（可选）
+try:
+    from template_parser import (
+        TemplateStyleExtractor, 
+        TemplateBasedGenerator,
+        analyze_template,
+        get_theme_from_template,
+        generate_from_template
+    )
+    HAS_TEMPLATE_PARSER = True
+except ImportError:
+    HAS_TEMPLATE_PARSER = False
+    print("💡 提示：如需使用模板功能，请确保 template_parser.py 在同一目录下")
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -1326,17 +1342,45 @@ def download_images_from_json(image_tasks, unsplash_key=None, siliconflow_key=No
 # 主函数 v3.9
 # ========================================================================
 
+def select_template_file():
+    """弹出文件选择器选择PPT模板"""
+    if not HAS_TKINTER:
+        # 终端输入模式
+        return input("请输入模板文件路径: ").strip()
+    
+    root = tk.Tk()
+    root.withdraw()  # 隐藏主窗口
+    
+    file_path = filedialog.askopenfilename(
+        title="选择PPT模板文件",
+        filetypes=[
+            ("PowerPoint文件", "*.pptx"),
+            ("所有文件", "*.*")
+        ]
+    )
+    
+    root.destroy()
+    return file_path
+
+
 def main():
-    """主函数 v3.9 - 支持GUI输入"""
+    """主函数 v4.0 - 支持模板导入"""
     print("=" * 70)
-    print("PPT自动生成器 v3.9 - 完美版")
+    print("PPT自动生成器 v4.0 - 模板版")
     print("=" * 70)
     print()
-    print("📌 v3.9 新特性：")
+    print("📌 v4.0 新特性：")
     print("  ✅ 粘贴大纲文本自动支持AI图片生成")
     print("  ✅ GUI弹窗输入（更方便粘贴）")
     print("  ✅ 4种主题配色支持")
     print("  ✅ 图片路径智能同步")
+    print("  🆕 支持企业模板导入（提取样式自动生成）")
+    print("  🆕 模板分析报告功能")
+    
+    if HAS_TEMPLATE_PARSER:
+        print("  ✅ 模板解析模块已加载")
+    else:
+        print("  ⚠️  模板解析模块未加载（需要 template_parser.py）")
     print()
     
     # ===== 步骤1：选择输入方式 =====
@@ -1344,13 +1388,19 @@ def main():
     print("📄 步骤1：输入PPT大纲")
     print("=" * 70)
     
+    menu_items = [
+        "[1] 弹窗粘贴大纲（推荐 - 最方便）",
+        "[2] 终端粘贴大纲",
+        "[3] 使用内置示例（军事主题）",
+        "[4] 导入JSON文件",
+    ]
+    
+    if HAS_TEMPLATE_PARSER:
+        menu_items.append("[5] 🆕 使用企业模板生成")
+        menu_items.append("[6] 🆕 分析模板样式（仅查看）")
+    
     choice = input(
-        "\n请选择输入方式:\n"
-        "[1] 弹窗粘贴大纲（推荐 - 最方便）\n"
-        "[2] 终端粘贴大纲\n"
-        "[3] 使用内置示例（军事主题）\n"
-        "[4] 导入JSON文件\n"
-        "默认: 1 > "
+        "\n请选择输入方式:\n" + "\n".join(menu_items) + "\n默认: 1 > "
     ).strip() or "1"
     
     json_data = None
@@ -1457,6 +1507,111 @@ def main():
         except Exception as e:
             print(f"❌ JSON解析失败: {e}")
             return
+    
+    elif choice == "5" and HAS_TEMPLATE_PARSER:
+        # ===== 🆕 使用企业模板生成 =====
+        print("\n" + "=" * 70)
+        print("📋 使用企业模板生成PPT")
+        print("=" * 70)
+        
+        # 选择模板文件
+        print("\n请选择模板文件...")
+        template_path = select_template_file()
+        
+        if not template_path or not os.path.exists(template_path):
+            print("❌ 未选择模板文件或文件不存在")
+            return
+        
+        print(f"✅ 模板: {template_path}")
+        
+        # 分析模板
+        print("\n📊 正在分析模板样式...")
+        try:
+            template_style = analyze_template(template_path)
+        except Exception as e:
+            print(f"❌ 模板分析失败: {e}")
+            return
+        
+        # 输入大纲内容
+        print("\n📝 请输入大纲内容...")
+        text_content = get_text_from_gui()
+        
+        if not text_content:
+            print("❌ 已取消或未输入内容")
+            return
+        
+        # 解析大纲
+        try:
+            json_data = json.loads(text_content)
+            print(f"✅ JSON格式解析成功")
+        except json.JSONDecodeError:
+            print(f"📝 检测到纯文本大纲，正在转换...")
+            json_data = parse_outline_to_json(text_content)
+            if not json_data:
+                print("❌ 大纲解析失败")
+                return
+        
+        # 选择生成模式
+        print("\n生成模式：")
+        print("  [1] 克隆模式 - 提取模板样式生成新PPT（推荐）")
+        print("  [2] 填充模式 - 尝试复制模板页面并填充")
+        mode_choice = input("选择 (默认: 1): ").strip() or "1"
+        mode = 'fill' if mode_choice == '2' else 'clone'
+        
+        # 输出文件
+        output_path = input("\n输出文件名 (默认: template_output.pptx): ").strip() or "template_output.pptx"
+        if not output_path.endswith('.pptx'):
+            output_path += '.pptx'
+        
+        # 使用模板生成
+        try:
+            generate_from_template(template_path, json_data, output_path, mode=mode)
+            print("=" * 70)
+            print(f"✅ 完成！文件已保存到: {output_path}")
+            print("=" * 70)
+        except Exception as e:
+            print(f"❌ 生成失败: {e}")
+        
+        return  # 模板模式结束后直接返回
+    
+    elif choice == "6" and HAS_TEMPLATE_PARSER:
+        # ===== 🆕 分析模板样式（仅查看） =====
+        print("\n" + "=" * 70)
+        print("🔍 模板样式分析")
+        print("=" * 70)
+        
+        print("\n请选择模板文件...")
+        template_path = select_template_file()
+        
+        if not template_path or not os.path.exists(template_path):
+            print("❌ 未选择模板文件或文件不存在")
+            return
+        
+        try:
+            analyze_template(template_path)
+            
+            # 询问是否导出主题配置
+            export_choice = input("\n是否导出为自定义主题配置？[y/N]: ").strip().lower()
+            if export_choice == 'y':
+                theme = get_theme_from_template(template_path)
+                print("\n📋 可复制以下主题配置到代码中：")
+                print("-" * 50)
+                print("'custom_template': {")
+                print(f"    'name': '自定义模板主题',")
+                for key, value in theme.items():
+                    if key == 'name':
+                        continue
+                    if hasattr(value, '__class__') and value.__class__.__name__ == 'RGBColor':
+                        # 打印RGBColor信息
+                        print(f"    '{key}': RGBColor({value.red}, {value.green}, {value.blue}),")
+                    else:
+                        print(f"    '{key}': {repr(value)},")
+                print("}")
+                print("-" * 50)
+        except Exception as e:
+            print(f"❌ 分析失败: {e}")
+        
+        return  # 仅分析模式结束后直接返回
     
     else:
         print("❌ 无效选择")
