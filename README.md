@@ -1,5 +1,13 @@
 # PPT自动生成器 v3.8
 
+## 集团工程规范｜SCP v3.8
+
+中央唯一入口：https://github.com/bog5d/grill-to-spec/blob/main/SCP-v3.8.md 。L1/L2开发或 Agent流程先读中央 README、START_HERE、SCP-v3.8、HARNESS，按 GCCSEG 建立真实可验收的业务目标；L0 小改按风险精简。
+
+PPT自动生成器自身的产品版本同名 v3.8，不是集团SCP代码原则版本；最终体验是可打开、内容/金句/图片/排版正确的PPT文件，不是Python成功退出或生成占位图片。
+
+双进度：工程开发完成率和用户最终效果达成率分别报告；来源/配置/产物要有 Evidence，实测失败标 FAIL，缺证据标 UNKNOWN。禁止修改生产/私人原始素材或自动对外发布；保留现有项目入口与范围。
+
 🚀 **一款基于AI的智能PPT生成工具**，支持从JSON配置自动生成专业PPT，包含AI图片生成、智能排版、多主题支持等功能。
 
 ## ✨ 核心功能
